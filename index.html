@@ -111,6 +111,7 @@
   .toast.show { display:block; }
   footer { text-align:center; font-size:12px; color:#9aa0a8; margin-top:30px; }
 </style>
+<meta name="robots" content="noindex,nofollow">
 </head>
 <body>
 <header>
@@ -336,5 +337,184 @@ copyBtn.textContent = '📋 复制查询结果（可发工作群）';
 copyBtn.addEventListener('click', function(){ copyResult(qEl.value.trim()); });
 document.getElementById('m-body').appendChild(copyBtn);
 </script>
+<style id="gate-css">
+.gate-overlay{position:fixed;inset:0;z-index:99999;background:linear-gradient(135deg,#102c47 0%,#1d5a8a 55%,#14476e 100%);display:flex;align-items:center;justify-content:center;padding:20px;font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;}
+.gate-card{width:100%;max-width:350px;background:#fff;border-radius:16px;padding:30px 26px 22px;box-shadow:0 20px 55px rgba(0,0,0,.4);text-align:center;}
+.gate-logo{width:58px;height:58px;margin:0 auto 12px;background:linear-gradient(135deg,#0d9488,#14b8a6);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:26px;color:#fff;box-shadow:0 6px 16px rgba(13,148,136,.35);}
+.gate-card h2{margin:0 0 4px;font-size:19px;color:#12314f;letter-spacing:1px;}
+.gate-card .sub{margin:0 0 18px;font-size:12.5px;color:#6b7280;}
+.gate-input{width:100%;box-sizing:border-box;border:1.5px solid #d1d5db;border-radius:10px;padding:12px 14px;font-size:16px;outline:none;text-align:center;}
+.gate-input:focus{border-color:#0d9488;box-shadow:0 0 0 3px rgba(13,148,136,.15);}
+.gate-btn{width:100%;margin-top:14px;border:none;border-radius:10px;background:linear-gradient(135deg,#0d9488,#0f766e);color:#fff;font-size:16px;font-weight:600;padding:12px;cursor:pointer;letter-spacing:4px;}
+.gate-btn:disabled{opacity:.55;cursor:not-allowed;}
+.gate-msg{min-height:16px;margin-top:10px;font-size:12.5px;color:#dc2626;display:none;}
+.gate-msg.show{display:block;}
+.gate-hint{font-size:12px;color:#9ca3af;margin-top:8px;display:none;}
+.gate-hint.show{display:block;}
+.gate-foot{margin-top:18px;font-size:11px;color:#9ca3af;}
+.gate-overlay.gone{display:none;}
+.shake{animation:gshake .45s;}
+@keyframes gshake{0%,100%{transform:translateX(0)}20%,60%{transform:translateX(-9px)}40%,80%{transform:translateX(9px)}}
+</style>
+<div class="gate-overlay" id="gateOverlay">
+  <div class="gate-card" id="gateCard">
+    <div class="gate-logo">🔐</div>
+    <h2>宽带楼盘查询</h2>
+    <p class="sub">请输入访问密码后使用</p>
+    <input type="password" class="gate-input" id="gatePw" autocomplete="off" placeholder="密码" maxlength="64">
+    <button type="button" class="gate-btn" id="gateBtn">进 入</button>
+    <div class="gate-msg" id="gateMsg">密码错误，请重试</div>
+    <div class="gate-hint" id="gateHint"></div>
+    <div class="gate-foot">内部资料 · 凭密码访问 · 请勿外传</div>
+  </div>
+</div>
+<script>
+(function(){
+  var PASS_HASH = '2ac2c69241d4bfc994de945c11bcfe6537398a5314c95b3e5dedc5c48b674335';
+  var SKEY = 'bqt_auth_v1';
+  var LKEY = 'bqt_lock_until_v1';
+  var FKEY = 'bqt_fails_v1';
+  var MAX_FAIL = 5;
+  var LOCK_MS = 60000;
+
+  function toBytes(s){
+    if (typeof TextEncoder !== 'undefined') return new TextEncoder().encode(s);
+    var out = [], i, c;
+    for (i = 0; i < s.length; i++){
+      c = s.charCodeAt(i);
+      if (c < 0x80) out.push(c);
+      else if (c < 0x800){ out.push(0xc0|(c>>6), 0x80|(c&63)); }
+      else { out.push(0xe0|(c>>12), 0x80|((c>>6)&63), 0x80|(c&63)); }
+    }
+    return out;
+  }
+  function sha256hex(str){
+    var K = [0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,
+             0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,
+             0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,
+             0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,
+             0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,
+             0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,
+             0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,
+             0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2];
+    var H = [0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19];
+    var msg = toBytes(str);
+    var bitlen = msg.length * 8;
+    var rem = msg.length % 64;
+    var padLen = (rem < 56) ? (56 - rem) : (120 - rem);
+    var total = msg.length + padLen;
+    var data = new Uint8Array(total + 8);
+    data.set(msg);
+    data[msg.length] = 0x80;
+    var dv = new DataView(data.buffer);
+    dv.setUint32(total, Math.floor(bitlen / 0x100000000), false);
+    dv.setUint32(total + 4, bitlen >>> 0, false);
+    var w = new Uint32Array(64);
+    function rrot(x,c){ return (x >>> c) | (x << (32 - c)); }
+    for (var off = 0; off < data.length; off += 64){
+      for (var i = 0; i < 16; i++) w[i] = dv.getUint32(off + i*4, false);
+      for (i = 16; i < 64; i++){
+        var s0 = rrot(w[i-15],7) ^ rrot(w[i-15],18) ^ (w[i-15]>>>3);
+        var s1 = rrot(w[i-2],17) ^ rrot(w[i-2],19) ^ (w[i-2]>>>10);
+        w[i] = (w[i-16] + s0 + w[i-7] + s1) >>> 0;
+      }
+      var a=H[0],b=H[1],c=H[2],d=H[3],e=H[4],f=H[5],g=H[6],h=H[7];
+      for (i = 0; i < 64; i++){
+        var S1 = rrot(e,6) ^ rrot(e,11) ^ rrot(e,25);
+        var ch = (e & f) ^ (~e & g);
+        var t1 = (h + S1 + ch + K[i] + w[i]) >>> 0;
+        var S0 = rrot(a,2) ^ rrot(a,13) ^ rrot(a,22);
+        var maj = (a & b) ^ (a & c) ^ (b & c);
+        var t2 = (S0 + maj) >>> 0;
+        h = g; g = f; f = e; e = (d + t1) >>> 0;
+        d = c; c = b; b = a; a = (t1 + t2) >>> 0;
+      }
+      H[0] = (H[0]+a)>>>0; H[1] = (H[1]+b)>>>0; H[2] = (H[2]+c)>>>0; H[3] = (H[3]+d)>>>0;
+      H[4] = (H[4]+e)>>>0; H[5] = (H[5]+f)>>>0; H[6] = (H[6]+g)>>>0; H[7] = (H[7]+h)>>>0;
+    }
+    var hex = '';
+    for (i = 0; i < 8; i++){
+      var v = H[i].toString(16);
+      while (v.length < 8) v = '0' + v;
+      hex += v;
+    }
+    return hex;
+  }
+
+  function ls(key){ try { return sessionStorage.getItem(key); } catch(e){ return null; } }
+  function lss(key, val){ try { sessionStorage.setItem(key, val); } catch(e){} }
+  function lsr(key){ try { sessionStorage.removeItem(key); } catch(e){} }
+
+  var overlay = document.getElementById('gateOverlay');
+  var pw = document.getElementById('gatePw');
+  var btn = document.getElementById('gateBtn');
+  var msg = document.getElementById('gateMsg');
+  var hint = document.getElementById('gateHint');
+  var timer = null;
+
+  if (ls(SKEY) === '1'){ overlay.classList.add('gone'); return; }
+
+  function lockState(){
+    var u = parseInt(ls(LKEY) || '0', 10);
+    return (u - Date.now());
+  }
+  function showErr(t){
+    msg.textContent = t;
+    msg.classList.add('show');
+    var card = document.getElementById('gateCard');
+    card.classList.remove('shake');
+    void card.offsetWidth;
+    card.classList.add('shake');
+  }
+  function tick(){
+    var remain = lockState();
+    if (remain <= 0){
+      hint.classList.remove('show');
+      btn.disabled = false; pw.disabled = false;
+      if (timer){ clearInterval(timer); timer = null; }
+      return;
+    }
+    hint.textContent = '输错次数过多，请 ' + Math.ceil(remain/1000) + ' 秒后再试';
+    hint.classList.add('show');
+  }
+  function login(){
+    if (lockState() > 0){ tick(); return; }
+    var input = pw.value || '';
+    if (sha256hex(input) === PASS_HASH){
+      lss(SKEY, '1');
+      lsr(FKEY); lsr(LKEY);
+      overlay.classList.add('gone');
+      var q = document.getElementById('q');
+      if (q) setTimeout(function(){ try{ q.focus(); }catch(e){} }, 60);
+    } else {
+      var fails = parseInt(ls(FKEY) || '0', 10) + 1;
+      lss(FKEY, String(fails));
+      if (fails >= MAX_FAIL){
+        lss(LKEY, String(Date.now() + LOCK_MS));
+        lss(FKEY, '0');
+        btn.disabled = true; pw.disabled = true;
+        showErr('输错次数过多，已临时锁定');
+        tick();
+        timer = setInterval(tick, 1000);
+      } else {
+        showErr('密码错误，还可尝试 ' + (MAX_FAIL - fails) + ' 次');
+      }
+      pw.value = '';
+      pw.focus();
+    }
+  }
+  btn.addEventListener('click', login);
+  pw.addEventListener('keydown', function(e){ if (e.key === 'Enter') login(); });
+  if (lockState() > 0){
+    btn.disabled = true; pw.disabled = true;
+    showErr('输错次数过多，已临时锁定');
+    tick();
+    timer = setInterval(tick, 1000);
+  } else {
+    pw.focus();
+  }
+})();
+</script>
+
 </body>
 </html>
